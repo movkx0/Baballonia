@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <PackageReference Include="Avalonia.iOS" Version="11.2.6" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
     </ItemGroup>
 
     <ItemGroup>

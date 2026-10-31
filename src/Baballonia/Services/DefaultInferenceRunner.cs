@@ -33,13 +33,27 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
 
         _logger = loggerFactory.CreateLogger(this.GetType().Name + "." + Path.GetFileName(modelPath));
 
-        SessionOptions sessionOptions = SetupSessionOptions();
-        if (useGpu)
-            ConfigurePlatformSpecificGpu(sessionOptions, modelPath);
-        else
+        using var sessionOptions = SetupSessionOptions();
+        var gpuConfigured = useGpu && ConfigurePlatformSpecificGpu(sessionOptions, modelPath);
+        if (!useGpu)
             sessionOptions.AppendExecutionProvider_CPU();
 
-        _session = new InferenceSession(modelPath, sessionOptions);
+        InferenceSession session;
+        try
+        {
+            session = new InferenceSession(modelPath, sessionOptions);
+        }
+        catch (OnnxRuntimeException ex) when (gpuConfigured)
+        {
+            // Some GPU failures occur only when loading the model. Retry with fresh CPU-only options.
+            _logger.LogWarning(ex, "Failed to initialize GPU inference for {ModelName}. Falling back to CPU.", modelPath);
+            using var cpuOptions = SetupSessionOptions();
+            cpuOptions.AppendExecutionProvider_CPU();
+            session = new InferenceSession(modelPath, cpuOptions);
+        }
+
+        _session?.Dispose();
+        _session = session;
         _inputName = _session.InputMetadata.Keys.First();
         var dimensions = _session.InputMetadata.Values.First().Dimensions;
         InputSize = new Size(dimensions[2], dimensions[3]);
@@ -70,7 +84,7 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
     /// </summary>
     /// <param name="sessionOptions"></param>
     /// <param name="modelName"></param>
-    private void ConfigurePlatformSpecificGpu(SessionOptions sessionOptions, string modelName)
+    private bool ConfigurePlatformSpecificGpu(SessionOptions sessionOptions, string modelName)
     {
         // "The Android Neural Networks API (NNAPI) is an Android C API designed for
         // running computationally intensive operations for machine learning on Android devices."
@@ -81,7 +95,7 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
         {
             sessionOptions.AppendExecutionProvider_Nnapi();
             _logger.LogInformation("Initialized ExecutionProvider: nnAPI for {ModelName}", modelName);
-            return;
+            return true;
         }
 
         if (OperatingSystem.IsIOS() ||
@@ -92,7 +106,7 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
         {
             sessionOptions.AppendExecutionProvider_CoreML();
             _logger.LogInformation("Initialized ExecutionProvider: CoreML for {ModelName}", modelName);
-            return;
+            return true;
         }
 
         if (OperatingSystem.IsWindows())
@@ -102,8 +116,10 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
             try
             {
                 sessionOptions.AppendExecutionProvider_DML();
+                sessionOptions.EnableMemoryPattern = false;
+                sessionOptions.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
                 _logger.LogInformation("Initialized ExecutionProvider: DirectML for {ModelName}", modelName);
-                return;
+                return true;
             }
             catch (Exception)
             {
@@ -111,18 +127,24 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
             }
         }
 
-        // If the user's system does not support DirectML (for whatever reason,
-        // it's shipped with Windows 10, version 1903(10.0; Build 18362)+
-        // Fallback on good ol' CUDA
+        // CUDA is available in the Windows CUDA build and Linux x64 builds.
         try
         {
-            sessionOptions.AppendExecutionProvider_CUDA();
+            using var cudaProviderOptions = new OrtCUDAProviderOptions();
+            cudaProviderOptions.UpdateOptions(new Dictionary<string, string>
+            {
+                ["device_id"] = "0",
+                // Limit the CUDA memory arena to 2 GiB per inference session.
+                ["gpu_mem_limit"] = "2147483648"
+            });
+            // Append to the caller's options so the provider and common settings reach the session.
+            sessionOptions.AppendExecutionProvider_CUDA(cudaProviderOptions);
             _logger.LogInformation("Initialized ExecutionProvider: CUDA for {ModelName}", modelName);
-            return;
+            return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            _logger.LogWarning("Failed to create CUDA Execution Provider.");
+            _logger.LogWarning(ex, "Failed to create CUDA Execution Provider. CUDA 12 and cuDNN 9 must be installed and discoverable.");
         }
 
         // And, if CUDA fails (or we have an AMD card)
@@ -131,7 +153,7 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
         {
             sessionOptions.AppendExecutionProvider_MIGraphX();
             _logger.LogInformation("Initialized ExecutionProvider: MIGraphX for {ModelName}", modelName);
-            return;
+            return true;
         }
         catch (Exception)
         {
@@ -143,7 +165,7 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
         {
             sessionOptions.AppendExecutionProvider_OpenVINO();
             _logger.LogInformation("Initialized ExecutionProvider: OpenVINO for {ModelName}", modelName);
-            return;
+            return true;
         }
         catch (Exception)
         {
@@ -152,6 +174,7 @@ public class DefaultInferenceRunner(ILoggerFactory loggerFactory) : IInferenceRu
 
         _logger.LogWarning("No GPU acceleration will be applied.");
         sessionOptions.AppendExecutionProvider_CPU();
+        return false;
     }
 
     /// <summary>

@@ -99,6 +99,22 @@ Baballonia supports many kinds of hardware for eye and face tracking:
 If you want to publish a standalone installer for Baballonia, download [NSIS](https://github.com/negrutiu/nsis) here, or use your package manager. Then, run the 
 `.nsi` script located at `src/Baballonia.Desktop/main.nsi`
 
+#### CUDA acceleration
+
+Linux x64 builds include the CUDA execution provider. Windows builds use DirectML by default; build a Windows CUDA variant with:
+
+```sh
+dotnet publish src/Baballonia.Desktop -r win-x64 -c Release --self-contained -p:UseCuda=true -o artifacts/cuda/win-x64
+```
+
+Run the Windows publish command on Windows after downloading its dependencies. DirectML and CUDA use different native ONNX Runtime binaries, so each build selects one of them. Use separate publish directories for the two variants.
+
+CUDA requires an NVIDIA GPU and driver, the CUDA 12 toolkit (12.8 or newer within the 12.x series), and cuDNN 9 for CUDA 12. These dependencies are not bundled. Follow the [ONNX Runtime CUDA requirements](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements) for the packaged ONNX Runtime versions (1.24.3 on Windows and 1.22.0 on Linux). On Windows, add the CUDA and cuDNN `bin` directories to `PATH`; on Linux, make their shared libraries available through the system library path or `LD_LIBRARY_PATH` before starting Baballonia.
+
+Enable GPU acceleration in the application settings. Baballonia uses CUDA device 0 with a 2 GiB memory arena limit per model session. If GPU initialization fails, inference falls back to CPU and logs the failure. Disabling GPU acceleration always uses CPU inference.
+
+Build Linux x64 with `-p:UseCuda=false` to omit CUDA. Linux ARM64 and macOS continue to use the standard ONNX Runtime package; CUDA builds support only `linux-x64` and `win-x64`.
+
 ### Baballonia.Android/iOS
 
 1. If you are using an IDE, disable these projects:

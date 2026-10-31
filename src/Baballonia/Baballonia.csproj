@@ -62,8 +62,8 @@
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.4" />
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.4" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
-        <PackageReference Include="Microsoft.ML" Version="4.0.3" />
-        <PackageReference Include="Microsoft.ML.OnnxTransformer" Version="4.0.3" />
+        <!-- The application project selects the native runtime for its platform. -->
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.22.0" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
         <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260308" />
         <PackageReference Include="OscCore" Version="1.0.5" />

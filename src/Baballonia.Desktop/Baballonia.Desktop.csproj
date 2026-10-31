@@ -16,6 +16,33 @@
         <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <_OnnxRuntimeIdentifier>$(RuntimeIdentifier)</_OnnxRuntimeIdentifier>
+        <_OnnxRuntimeIdentifier Condition="'$(_OnnxRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</_OnnxRuntimeIdentifier>
+        <!-- CUDA packages support x64 only. Windows defaults to DirectML; opt in with -p:UseCuda=true. -->
+        <UseCuda Condition="'$(UseCuda)' == '' And '$(_OnnxRuntimeIdentifier)' == 'linux-x64'">true</UseCuda>
+        <UseCuda Condition="'$(UseCuda)' == ''">false</UseCuda>
+    </PropertyGroup>
+
+    <Target Name="ValidateCudaRuntime" BeforeTargets="CollectPackageReferences;PrepareForBuild">
+        <Error Condition="'$(UseCuda)' != 'true' And '$(UseCuda)' != 'false'"
+               Text="UseCuda must be true or false." />
+        <Error Condition="'$(UseCuda)' == 'true' And '$(_OnnxRuntimeIdentifier)' != 'win-x64' And '$(_OnnxRuntimeIdentifier)' != 'linux-x64'"
+               Text="CUDA is supported only for win-x64 and linux-x64. Set UseCuda=false for other targets." />
+    </Target>
+
+    <!-- Select exactly one native ONNX Runtime. DirectML and CUDA contain different onnxruntime.dll binaries. -->
+    <ItemGroup>
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu.Windows" Version="1.24.3"
+                          Condition="'$(UseCuda)' == 'true' And '$(_OnnxRuntimeIdentifier)' == 'win-x64'" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu.Linux" Version="1.22.0"
+                          Condition="'$(UseCuda)' == 'true' And '$(_OnnxRuntimeIdentifier)' == 'linux-x64'" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.3"
+                          Condition="'$(UseCuda)' == 'false' And $(_OnnxRuntimeIdentifier.StartsWith('win-'))" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0"
+                          Condition="'$(UseCuda)' == 'false' And !$(_OnnxRuntimeIdentifier.StartsWith('win-'))" />
+    </ItemGroup>
+
 	<PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
 	  <DefineConstants>WINDOWS</DefineConstants>
 	</PropertyGroup>
@@ -33,13 +60,11 @@
 
 	    <!-- Windows-specific -->
         <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260302" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
-	    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.3" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
         <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.2" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
 		<PackageReference Include="DirectShowLib" Version="1.0.0" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
 
         <!-- macOS-specific -->
         <PackageReference Include="OpenCvSharp4.runtime.osx.10.15-universal" Version="4.7.0.20230224" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
-	    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
         <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.2" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
 
         <!-- Linux-specific -->
@@ -48,7 +73,6 @@
 
         <PackageReference Include="Project-Babble.OpenCvSharp4.mini.runtime.ubuntu.22.04-arm64" Version="4.11.0.1" Condition="$([MSBuild]::IsOSPlatform('Linux')) And
              $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().Contains('Arm'))" />
-	    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
         <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.0" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
         <PackageReference Include="Xaml.Behaviors.Interactions.Draggable" Version="11.3.9.5" />
         <ProjectReference Include="..\Baballonia.LibV4L2Capture\Baballonia.LibV4L2Capture.csproj" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />

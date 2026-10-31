@@ -49,6 +49,25 @@ public class DefaultInferenceRunnerTest
     }
 
     [TestMethod]
+    [DataRow("faceModel.onnx", false)]
+    [DataRow("faceModel.onnx", true)]
+    [DataRow("eyeModel.onnx", false)]
+    [DataRow("eyeModel.onnx", true)]
+    public void TestInferenceWithGpuFallback(string modelPath, bool useGpu)
+    {
+        _defaultInference.Setup(modelPath, useGpu);
+        _defaultInference.GetInputTensor().Buffer.Span.Fill(0.5f);
+
+        var result = _defaultInference.Run();
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Length > 0);
+        Assert.AreEqual(result.Length, _defaultInference.OutputSize);
+        foreach (var value in result)
+            Assert.IsTrue(float.IsFinite(value));
+    }
+
+    [TestMethod]
     public void TestSinglePass()
     {
         var image = new Mat(_defaultInference.InputSize.Height, _defaultInference.InputSize.Width,
